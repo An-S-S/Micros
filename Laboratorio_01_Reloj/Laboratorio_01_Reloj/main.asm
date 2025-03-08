@@ -11,7 +11,14 @@
 ; Descripción: 
 ;*********************************************************
 
-.include "m328pdef.inc"  ; Definiciones del ATmega328P
+;______________________________________________________________________________
+;- - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - 
+;						 I N I C I A L I Z A C I Ó N
+;- - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - 
+;______________________________________________________________________________
+
+;______________________________________
+.include "m328pdef.inc"
 ; Definiciones
 .equ LCD_RS = 4
 .equ LCD_EN = 5
@@ -19,46 +26,78 @@
 .equ LCD_D5 = 1
 .equ LCD_D6 = 2
 .equ LCD_D7 = 3
-;___________________
+;______________________________________
 
-;___________________
+;______________________________________
 .def temp = r16
-.def horas = r17         
-.def minutos = r18       
-.def segundos = r19      
-;___________________
+.def estados = r17
+.def un_hora = r18 
+.def dec_hora = r19        
+.def un_min = r20      
+.def dec_min = r21
+.def contador = r22
+.def horas_totales = r23
+.def confirmar = r24 //boton para ver si se va al estado seleccionado
+Tabla:
+	.def 0 = 0x80 
+	.def 1 = 0xC0
+	.def 2 = 0xF9
+	.def 3 = 0XA4
+	.def 4 = 0XB0
+	.def 5 = 0x99
+	.def 6 = 0x92
+	.def 7 = 0x82
+	.def 9 = 0xF8     
+;______________________________________
 
 
-;___________________
+;______________________________________
 .dseg
 hora_buffer: .byte 9     ; Buffer para "HH:MM:SS" + terminador
-;___________________
+;______________________________________
 
 
-;___________________
-; Segmento de código
+;______________________________________
 .cseg
 .org 0x0000
-    rjmp RESET           ; Vector de reset
+    rjmp INICIO
+.org 0x0200
+	rjmp CONTEO
+LISTA:
 
-RESET:
+
+
+;______________________________________
+INICIO:
     ; Configurar pila
     ldi temp, low(RAMEND)
     out SPL, temp
     ldi temp, high(RAMEND)
     out SPH, temp
 
-    ; Configurar pines como salida (D0-D5)
-    ldi temp, 0x3F       ; 00111111 (D0-D5 como salidas)
-    out DDRD, temp
+	; Limpiando variables
+	clr temp
+	clr estados
+	clr un_hora
+	clr dec_hora
+	clr un_min
+	clr dec_min
+	clr conteo 
 
-    ; Inicializar LCD
-    rcall LCD_INIT
+    ; Configurar pines C como salida [Display]
+    ldi temp, 0xFF
+    out DDRC, temp
+	clr temp
 
-    ; Inicializar contadores
-    clr horas
-    clr minutos
-    clr segundos
+	; Configurar pines B como salida [Leds y Alarma]
+	ldi temp, 0xFF
+	out DDRB, temp
+	clr temp
+	
+	; Configurar pines D como entradas [Botones]
+	ldi temp, 0x00
+	out DDRD, temp
+	clr temp
 
     ; Configurar Timer1 para 1 segundo (16 MHz / 256 / 62500 = 1 Hz)
     ldi temp, 0x00
@@ -71,189 +110,193 @@ RESET:
     sts TCNT1L, temp
     ldi temp, (1<<TOIE1) ; Habilitar interrupción por overflow
     sts TIMSK1, temp
+	clr temp
+
+	; Configurar Timer0 para 500ms (Leds indicadores de segundo) ?? :(
+    ldi     temp, (1 << TOIE0)
+    sts     TIMSK0, R16
+    ldi     R16, (1 << TOV0)
+    sts     TIFR0, R16
+
+	//Configuracion del prescaler
+	ldi R16, (1 << CLKPCE)
+	sts CLKPR, R16 // Habilitar cambio de PRESCALER
+	ldi R16, 0b00000100
+	sts CLKPR, R16
+	ldi R16, (1<<CS02) | (1<<CS00)
+	out TCCR0B, R16 // Setear prescaler 1024
+	ldi R16, 22
+	out TCNT0, R16
     sei                  ; Habilitar interrupciones globales
+;______________________________________________________________________________
 
+
+;______________________________________________________________________________
+;- - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - 
+;								C Ó D I G O 
+;- - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - 
+;______________________________________________________________________________
+
+
+;______________________________________________________________________________
 MAIN_LOOP:
-    rcall ACTUALIZAR_HORA
-    rcall LCD_MOSTRAR
-    rjmp MAIN_LOOP
+	in temp, PIND
+	and temp, 0x00001000 [Boton de estados]
+	rcall ANTI_REBOTE
+	breq CAMBIAR_ESTADO
+	
+;______________________________________________________________________________
 
-; Interrupción del Timer1 (cada segundo)
-.org OVF1addr
-    push temp
-    in temp, SREG
-    push temp
+CAMBIAR_ESTADO:
+	inc estados
+	cpi estados, 6
+	brne PRIMER_ESTADO
+	clr estados
+	rjmp MAIN_LOOP
 
-    ; Reiniciar Timer1
-    ldi temp, high(62500)
-    sts TCNT1H, temp
-    ldi temp, low(62500)
-    sts TCNT1L, temp
+PRIMER_ESTADO:
+	cpi estados, 0
+	brne SEGUNDO_ESTADO
+	clr temp
+	ldi temp, 0b00000001 //Estado 1
+	out portB, temp
+	rcall CONFIRMACION
+	clr temp
+	rjmp RELOJ //[ESTADO 1]
 
-    ; Incrementar segundos
-    inc segundos
-    cpi segundos, 60
-    brne FIN_INT
-    clr segundos
-    inc minutos
-    cpi minutos, 60
-    brne FIN_INT
-    clr minutos
-    inc horas
-    cpi horas, 24
-    brne FIN_INT
-    clr horas
+SEGUNDO_ESTADO:
+	cpi estados, 1
+	brne TERCER_ESTADO
+	clr temp
+	ldi temp, 0b00000010 //Estado 2
+	out portB, temp
+	rcall CONFIRMACION
+	clr temp
+	rjmp AJUSTE_RELOJ //[ESTADO 2]
 
-FIN_INT:
-    pop temp
-    out SREG, temp
-    pop temp
-    reti
+TERCER_ESTADO:
+	cpi estados, 2
+	brne CUARTO_ESTADO 
+	clr temp
+	ldi temp, 0b00000011 //Estado 3
+	out portB, temp
+	rcall CONFIRMACION
+	clr temp
+	rjmp FECHA //[ESTADO 3]
 
-; Inicializar LCD en modo 4 bits
-LCD_INIT:
-    ldi temp, 100        ; Retardo inicial
-    rcall DELAY_MS
-    ldi temp, 0x03       ; Iniciar en modo 8 bits
-    rcall LCD_CMD_4BIT
-    ldi temp, 5
-    rcall DELAY_MS
-    ldi temp, 0x02       ; Cambiar a modo 4 bits
-    rcall LCD_CMD_4BIT
-    ldi temp, 0x28       ; 4 bits, 2 líneas, 5x8
-    rcall LCD_COMMAND
-    ldi temp, 0x0C       ; Display on, cursor off
-    rcall LCD_COMMAND
-    ldi temp, 0x01       ; Limpiar pantalla
-    rcall LCD_COMMAND
-    ldi temp, 2
-    rcall DELAY_MS
-    ret
+CUARTO_ESTADO:
+	cpi estados, 3
+	brne QUINTO_ESTADOS
+	clr temp
+	ldi temp, 0b00000100
+	out portB, temp
+	rcall CONFIRMACION
+	clr temp
+	rjmp CONFIGURACION_FECHA
 
-; Enviar comando al LCD
-LCD_COMMAND:
-    push temp
-    mov r20, temp
-    swap r20            ; Enviar nibble alto
-    andi r20, 0x0F
-    out PORTD, r20
-    sbi PORTD, LCD_EN
-    cbi PORTD, LCD_EN
-    mov r20, temp       ; Enviar nibble bajo
-    andi r20, 0x0F
-    out PORTD, r20
-    sbi PORTD, LCD_EN
-    cbi PORTD, LCD_EN
-    ldi temp, 1
-    rcall DELAY_MS
-    pop temp
-    ret
+QUINTO_ESTADO:
+	cpi estados, 4
+	brne FALLO
+	clr temp
+	ldi temp, 0b00000101
+	rcall CONFIRMACION
+	clr temp
+	rjmp ALARMA
+;______________________________________________________________________________
+CONTEO:
+	brvc CONTEO // Overflow a 1 segundo
+	clv 
+	inc contador
+	cpi contador, 60
+	brne CONTEO
+	inc un_min
+	cpi un_min, 10
+	brne LCD_UN_MIN // Si no es 10, cambia el valor en el display
+	// Pasaron 10 minutos
+	ldi un_min, 0
+	rcall LCD_UN_MIN // Actualiza el valor a 0 en el display
+	inc dec_min
+	cpi dec_min, 6
+	brne LCD_DEC_MIN // Si no es 6, cambia el valor en el display
+	// Pasaron 60 minutos
+	ldi dec_min, 0
+	rcall LCD_DEC_MIN // Actualiza el valor a 0 en el display
+	inc un_hora
+	inc horas_totales
+	cpi un_hora, 10
+	brne LCD_UN_HORA // Si no es 10, cambia el valor en el display
+	// Pasaron 10 horas
+	ldi un_hora, 0
+	rcall LCD_UN_HORA // Actualiza el valor a 1 en el display
+	inc dec_hora
+	cpi horas_totales, 24
+	brne LCD_DEC_HORA
+	// Pasaron 24 horas
+	ldi un_min, 0 
+	rcall LCD_UN_MIN // Actualiza el valor a 0 en el display
+	ldi dec_min, 0
+	rcall LCD_DEC_MIN // Actualiza el valor a 0 en el display
+	ldi un_hora, 0
+	rcall LCD_UN_HORA
+	ldi dec_hora, 0
+	rcall LCD_DEC_HORA
+	rjmp CONTEO
+;______________________________________________________________________________
 
-LCD_CMD_4BIT:
-    push temp
-    andi temp, 0x0F
-    out PORTD, temp
-    sbi PORTD, LCD_EN
-    cbi PORTD, LCD_EN
-    pop temp
-    ret
 
-; Enviar carácter al LCD
-LCD_CHAR:
-    push temp
-    mov r20, temp
-    swap r20            ; Nibble alto
-    andi r20, 0x0F
-    sbi PORTD, LCD_RS
-    out PORTD, r20
-    sbi PORTD, LCD_EN
-    cbi PORTD, LCD_EN
-    mov r20, temp       ; Nibble bajo
-    andi r20, 0x0F
-    out PORTD, r20
-    sbi PORTD, LCD_EN
-    cbi PORTD, LCD_EN
-    cbi PORTD, LCD_RS
-    ldi temp, 1
-    rcall DELAY_MS
-    pop temp
-    ret
+;______________________________________________________________________________
+LCD_UN_MIN:
+	mov temp, un_min
 
-; Actualizar buffer de hora
-ACTUALIZAR_HORA:
-    push temp
-    ldi r30, low(hora_buffer)  ; Puntero al buffer
-    ldi r31, high(hora_buffer)
+;______________________________________________________________________________
 
-    mov temp, horas
-    rcall BIN2ASCII
-    st Z+, r20          ; Decenas horas
-    st Z+, temp         ; Unidades horas
-    ldi temp, ':'
-    st Z+, temp
 
-    mov temp, minutos
-    rcall BIN2ASCII
-    st Z+, r20          ; Decenas minutos
-    st Z+, temp         ; Unidades minutos
-    ldi temp, ':'
-    st Z+, temp
+;______________________________________________________________________________
+LCD_DEC_MIN:
+;______________________________________________________________________________
 
-    mov temp, segundos
-    rcall BIN2ASCII
-    st Z+, r20          ; Decenas segundos
-    st Z+, temp         ; Unidades segundos
-    ldi temp, 0
-    st Z, temp          ; Fin de cadena
-    pop temp
-    ret
 
-; Convertir binario a ASCII
-BIN2ASCII:
-    push r21
-    ldi r21, 10
-    clr r20
-DIV_LOOP:
-    cp temp, r21
-    brlt FIN_DIV
-    sub temp, r21
-    inc r20
-    rjmp DIV_LOOP
-FIN_DIV:
-    ldi r21, '0'
-    add r20, r21        ; Decenas a ASCII
-    add temp, r21       ; Unidades a ASCII
-    pop r21
-    ret
+;______________________________________________________________________________
+LCD_UN_HORA:
+;______________________________________________________________________________
 
-; Mostrar buffer en LCD
-LCD_MOSTRAR:
-    push temp
-    ldi temp, 0x01      ; Limpiar pantalla
-    rcall LCD_COMMAND
-    ldi r30, low(hora_buffer)
-    ldi r31, high(hora_buffer)
-MOSTRAR_LOOP:
-    ld temp, Z+
-    cpi temp, 0
-    breq FIN_MOSTRAR
-    rcall LCD_CHAR
-    rjmp MOSTRAR_LOOP
-FIN_MOSTRAR:
-    pop temp
-    ret
 
+;______________________________________________________________________________
+LCD_DEC_HORA:
+;______________________________________________________________________________
+
+
+
+;______________________________________________________________________________
 ; Retardo en milisegundos (entrada en temp)
-DELAY_MS:
+ANTI_REBOTE:
     push r17
     push r18
-DELAY_OUTER:
+DELAY_outER:
     ldi r18, 199
 DELAY_INNER:
     dec r18
     brne DELAY_INNER
     dec temp
-    brne DELAY_OUTER
+    brne DELAY_outER
     pop r18
     pop r17
     ret
+;______________________________________________________________________________
+
+CONFIRMACION:
+	in temp, PIND
+	rcall ANTI_REBOTE
+	cpi temp, 0b00000100 //boton de confirmación
+	breq ret
+	clr temp
+	in temp, PIND
+	cpi temp, 0b00001000
+	breq CAMBIAR_ESTADO
+	rjmp CONFIRMACION
+	
+
+FALLO:
+	clr temp
+	ldi temp, 0x00110000
+	out portB, temp
