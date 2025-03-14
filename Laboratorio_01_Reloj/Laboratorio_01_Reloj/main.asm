@@ -37,17 +37,21 @@
 .def dec_min = r21
 .def contador = r22
 .def horas_totales = r23
-.def confirmar = r24 //boton para ver si se va al estado seleccionado
+.def display = r24 
+.def dias = r25
+.def meses = r15
+.def QDis = r14
 Tabla:
-	.def 0 = 0x80 
-	.def 1 = 0xC0
-	.def 2 = 0xF9
-	.def 3 = 0XA4
-	.def 4 = 0XB0
-	.def 5 = 0x99
-	.def 6 = 0x92
-	.def 7 = 0x82
-	.def 9 = 0xF8     
+	.db 0 == 0b00111111 ; 0
+    .db 1 == 0b00000110 ; 1
+    .db 2 == 0b01011011 ; 2
+    .db 3 == 0b01001111 ; 3
+    .db 4 == 0b01100110 ; 4
+    .db 5 == 0b01101101 ; 5
+    .db 6 == 0b01111101 ; 6
+    .db 7 == 0b00000111 ; 7
+    .db 8 == 0b01111111 ; 8
+    .db 9 == 0b01101111 ; 9
 ;______________________________________
 
 
@@ -61,12 +65,6 @@ hora_buffer: .byte 9     ; Buffer para "HH:MM:SS" + terminador
 .cseg
 .org 0x0000
     rjmp INICIO
-.org 0x0200
-	rjmp CONTEO
-LISTA:
-
-
-
 ;______________________________________
 INICIO:
     ; Configurar pila
@@ -83,19 +81,29 @@ INICIO:
 	clr un_min
 	clr dec_min
 	clr conteo 
+	clr display
 
     ; Configurar pines C como salida [Display]
+	// [0111 1111] <- Displays (PC0 - PC5)
+	// [1000 0000] <- Buzzer (PC6)
     ldi temp, 0xFF
     out DDRC, temp
 	clr temp
 
 	; Configurar pines B como salida [Leds y Alarma]
+	// [0000 0XXX] <- Leds (PB0 - PB2)
+	// [--0X X000] <- Configurar 2 últimos displays (PB3 - PB4)
 	ldi temp, 0xFF
 	out DDRB, temp
 	clr temp
 	
 	; Configurar pines D como entradas [Botones]
-	ldi temp, 0x00
+	// [0000 01--] <- Confirmación (PD2)
+	// [0000 10--] <- Estados      (PD3)
+	// [0001 00--] <- Aumento      (PD4)
+	// [0010 00--] <- Disminución  (PD5)
+	ldi temp, 0b11000000 // Configurar 
+	// [1100 0000] <- Configurar 2 primeros displays (PD6 - PD7)
 	out DDRD, temp
 	clr temp
 
@@ -141,12 +149,13 @@ INICIO:
 ;______________________________________________________________________________
 MAIN_LOOP:
 	in temp, PIND
-	and temp, 0x00001000 [Boton de estados]
+	and temp, 0x00001000 // [Boton de estados]
 	rcall ANTI_REBOTE
 	breq CAMBIAR_ESTADO
-	
 ;______________________________________________________________________________
 
+
+;______________________________________________________________________________
 CAMBIAR_ESTADO:
 	inc estados
 	cpi estados, 6
@@ -162,6 +171,12 @@ PRIMER_ESTADO:
 	out portB, temp
 	rcall CONFIRMACION
 	clr temp
+	ldi display, 0b00011000
+	out portb, display
+	clr display
+	ldi display, 0b11000000
+	out portc, display
+	clr display
 	rjmp RELOJ //[ESTADO 1]
 
 SEGUNDO_ESTADO:
@@ -203,9 +218,19 @@ QUINTO_ESTADO:
 	clr temp
 	rjmp ALARMA
 ;______________________________________________________________________________
-CONTEO:
-	brvc CONTEO // Overflow a 1 segundo
-	clv 
+
+;______________________________________________________________________________
+;- - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - 
+;				            P R I M E R - E S T A D O
+;- - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - 
+;______________________________________________________________________________
+
+;______________________________________________________________________________
+RELOJ:
+	brvc RELOJ // Overflow a 1 segundo
+	clv
+	cpi estados, 0
+	brne CAMBIAR_ESTADOS 
 	inc contador
 	cpi contador, 60
 	brne CONTEO
@@ -241,30 +266,75 @@ CONTEO:
 	ldi dec_hora, 0
 	rcall LCD_DEC_HORA
 	rjmp CONTEO
-;______________________________________________________________________________
-
-
-;______________________________________________________________________________
+;______________________________________
+;######################################
+;______________________________________
 LCD_UN_MIN:
-	mov temp, un_min
-
-;______________________________________________________________________________
-
-
-;______________________________________________________________________________
+	ldi display, 0b00001000
+	out portb, display
+	clr display
+	out portc, un_min
+	ldi display, 0b00011000
+	out portb, display
+	clr display
+	ret
+;______________________________________
+;######################################
+;______________________________________
 LCD_DEC_MIN:
-;______________________________________________________________________________
-
-
-;______________________________________________________________________________
+	ldi display, 0b00010000
+	out portb, display
+	clr display
+	out portc, dec_min
+	ldi display, 0b00011000
+	out portb, display
+	clr display
+	ret
+;______________________________________
+;######################################
+;______________________________________
 LCD_UN_HORA:
-;______________________________________________________________________________
-
-
-;______________________________________________________________________________
+	ldi display, 0b01000000
+	out portd, display
+	clr display
+	out portc, un_hora
+	ldi display, 0b11000000
+	out portd, display
+	clr display
+	ret
+;______________________________________
+;######################################
+;______________________________________
 LCD_DEC_HORA:
+	ldi display, 0b10000000
+	out portd, display
+	clr display
+	out portc, dec_hora
+	ldi display, 0b11000000
+	out portd, display
+	clr display
+	out
 ;______________________________________________________________________________
 
+;______________________________________________________________________________
+;- - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - 
+;				          S E G U N D O - E S T A D O
+;- - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - 
+;______________________________________________________________________________
+
+;______________________________________________________________________________
+AJUSTE_RELOJ:
+    ldi r16, 0x05
+    out TCCR0, r16
+    ldi r16, 0x01
+    out TIMSK, r16
+    ldi r16, 123   ; Precarga inicial para ajustar los 500 ms
+    out TCNT0, r16
+;______________________________________
+;######################################
+;______________________________________
+
+	
 
 
 ;______________________________________________________________________________
