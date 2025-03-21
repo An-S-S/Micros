@@ -27,11 +27,12 @@
 // -> 1. Reloj
 // -> 2. Hora
 // -> 3. Configuración(Parpadeante)/Alarma(Permanente)
-.def temp  = r15
-.def temp2 = r16
-.def temp3 = r17
-.def temp4 = r18
-.def temp5 = r19
+.def temp = r16
+.def temp1 = r17
+.def temp2 = r18
+.def temp3 = r19
+.def temp4 = r20
+.def temp5 = r21
 //_________________________________
 //*********************************
 //    I N I C I O  T A B L A S
@@ -41,66 +42,38 @@ ldi xh, 0x01
 ldi xl, 0x00
 ldi zh, high(Valores*2)
 ldi zl, low(Valores*2)
-
 .dseg
 //_________________________________
 //*********************************
 //         V A L O R E S 
 //_________________________________
 //*********************************
-Segundos: .db 0x00
-
-Unidades_Minutos: .db 0x00
-
-Decenas_Minutos: .db 0x00
-
-Unidades_Horas: .db 0x00
-
-Decenas_Horas: .db 0x00
-
-Horas_Totales: .db 0x00
-
-Unidades_Dia: .db 0x00
-
-Decenas_Dia: .db 0x00
-
-Unidades_Mes: .db 0x00
-
-Decenas_Mes: .db 0x00
-
-Meses_Totales: .db 0x00
-
-Estado:  .db 0x00
-
-Display_Actual: .db 0x00
-
-Unidad_Minuto_Alarma: .db 0x00
-
-Decena_Minuto_Alarma: .db 0x00
-
-Unidad_Hora_Alarma: .db 0x00
-
-Decena_Hora_Alarma: .db 0x00
-
-//_________________________________
-//*********************************
-//         T A B L A S
-//_________________________________
-//*********************************
-Valores:
-.db 0x3F, 0x06, 0x5B, 0x4F, 0x66, 0x6D, 0x7D, 0x07, 0x7F, 0x6F
-
-Displays:
-.db 0x01, 0x02, 0x04, 0x08
+Segundos: .byte 1
+Unidades_Minutos: .byte 1
+Decenas_Minutos: .byte 1
+Unidades_Horas: .byte 1
+Decenas_Horas: .byte 1
+Horas_Totales: .byte 1
+Unidades_Dia: .byte 1
+Decenas_Dia: .byte 1
+Unidades_Mes: .byte 1
+Decenas_Mes: .byte 1
+Meses_Totales: .byte 1
+Estado:  .byte 1
+Display_Actual: .byte 1
+Unidad_Minuto_Alarma: .byte 1
+Decena_Minuto_Alarma: .byte 1
+Unidad_Hora_Alarma: .byte 1
+Decena_Hora_Alarma: .byte 1
 //_________________________________
 //*********************************
 //  I N T E R R U P C I O N E S 
 //_________________________________
 //*********************************
 .cseg
-.org 0x1200
+.org 0x5
 	rjmp INICIO
-.org PCMSK0
+.org PCI0addr
 	rjmp ISR_PC
 .org OVF0addr
 	rjmp IDENTIFICAR_ESTADO
@@ -130,7 +103,6 @@ INICIO:
 	; Limpiando variables
 	clr temp
 
-
 	//_________________________________
 	//*********************************
 	//      P U E R T O  D 
@@ -139,7 +111,7 @@ INICIO:
     ; Configurar pines D como salida [Display]
 	// [0111 1111] <- Displays	(PD1 - PD7) [g f e - d c b a]
     ldi temp, 0x7F
-    out DDRC, temp
+    out DDRD, temp
 	clr temp
 
 
@@ -172,7 +144,7 @@ INICIO:
 	// [0000 1000] <- Disminuir_Display2	(PC3) -> Disminuir Display 2
 	// [1111 0000] <- Control de displays	(PC4 - PC7) -> Para el Multiplexado [Decenas_Horas Unidades_Horas Decenas_Minutos Unidades_Minutos]
 	ldi temp, 0b11110000 // <- 4 salidas y 4 entradas
-	out DDRD, temp
+	out DDRC, temp
 	clr temp
 
 
@@ -241,20 +213,30 @@ INICIO:
 ;- - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - 
 ;______________________________________________________________________________
 MAIN_LOOP:
-	in temp, Estado
+	lds temp, Estado
 	cpi temp, 0 ; Estado 1 (Reloj)
-	breq MULTIPLEX_RELOJ
+	breq MULTIPLEX_RELOJ_A
 	cpi temp, 1 ; Estado 2 (Ajuste de Reloj)
-	breq AJUSTE_RELOJ
+	breq AJUSTE_RELOJ_ML
 	cpi temp, 2 ; Estado 3 (Fecha)
-	breq MULTIPLEX_FECHA
+	breq MULTIPLEX_FECHA_ML
 	cpi temp, 3 ; Estado 4 (Ajuste de Fecha)
-	breq AJUSTE_FECHA
+	breq AJUSTE_FECHA_ML
 	cpi temp, 4 ; Estado 5 (Configurar Alarma)
-	breq ALARMA 
+	breq ALARMA_ML
 	cpi temp, 5 ; Estado 6 (Apagar alarma)
-	breq APAGAR_ALARMA
+	breq DESACTIVAR_ALARMA_ML
 	rjmp MAIN_LOOP
+AJUSTE_RELOJ_ML:
+	rcall AJUSTE_RELOJ
+MULTIPLEX_FECHA_ML:
+	rcall MULTIPLEX_FECHA
+AJUSTE_FECHA_ML:
+	rcall AJUSTE_FECHA
+ALARMA_ML:
+	rcall ALARMA
+DESACTIVAR_ALARMA_ML:
+	rcall DESACTIVAR_ALARMA
 ;______________________________________________________________________________
 
 
@@ -265,13 +247,15 @@ MAIN_LOOP:
 ;- - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - 
 ;______________________________________________________________________________
 // Lógica para determinar que multiplexado se hace
-IDENTICAR_ESTADO:
-	in temp, Estado
+IDENTIFICAR_ESTADO:
+	lds temp, Estado
 	cpi temp, 0 ; Estado 1 - Reloj
-	breq MULTIPLEX_RELOJ
+	breq MULTIPLEX_RELOJ_A
 	cpi temp, 2 ; Estado 3 - Fecha
-	breq MULTIPLEX_FECHA
+	breq MULTIPLEX_FECHA_IE
 	reti
+MULTIPLEX_FECHA_IE:
+	rcall MULTIPLEX_FECHA
 ;______________________________________________________________________________
 
 
@@ -285,10 +269,9 @@ IDENTICAR_ESTADO:
 ISR_PC:
     ldi temp, (1<<TOIE1) ; Habilitar interrupción por overflow
     sts TIMSK1, temp
+	clr temp
 	in temp, PINC
-	eor temp, (1 << PB3)
-	rjmp CAMBIO_ESTADOS
-
+	sbrc temp, PB3
 CAMBIO_ESTADOS:
 	in temp, PINC 
 	cpi temp, 0x01 ; Boton de Aumentar estado
@@ -296,25 +279,22 @@ CAMBIO_ESTADOS:
 	cpi temp, 0x02 ; Boton de Disminuir estado
 	breq DISMINUIR_ESTADO
 	rjmp MAIN_LOOP
-
 AUMENTAR_ESTADO:
-	in temp, Estado
+	lds temp, Estado
 	inc temp
 	cpi temp, 6
 	breq CONFIRMAR
 	ldi temp, 0
 	rjmp CONFIRMAR
-
 DISMINUIR_ESTADO:
-	in temp, Estado
+	lds temp, Estado
 	dec temp
 	cpi temp, 255
 	breq CONFIRMAR
 	ldi temp, 5
 	rjmp CONFIRMAR
-
 CONFIRMAR:
-	out Estado, temp
+	sts Estado, temp
 	rjmp MAIN_LOOP
 ;______________________________________________________________________________
 
@@ -327,27 +307,27 @@ CONFIRMAR:
 ;- - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - 
 ;______________________________________________________________________________
 MULTIPLEX_RELOJ_A:
-	in temp, Display_Actual
+	lds temp, Display_Actual
 	inc temp
 	cpi temp, 4
 	brge REINICIO_DISPLAY_RELOJ_A
-	out Display_Actual, temp
+	sts Display_Actual, temp
 	rjmp ACTUALIZANDO_DISPLAY_RELOJ_A
 
 REINICIO_DISPLAY_RELOJ_A:
 	ldi temp, 0 
-	out Display_Actual
+	sts  Display_Actual, temp
 
 ACTUALIZANDO_DISPLAY_RELOJ_A:
 	ldi temp, 0x00
 	out PORTC, temp
-	in temp, Display_Actual
+	lds temp, Display_Actual
 	ldi ZH, high(Displays)
 	ldi ZL, low(Displays)
 	add ZL, temp
 	ld temp, Z
 	out PORTD, temp
-	in temp, Display_Actual
+	lds temp, Display_Actual
 	cpi temp, 0 
 	breq UNIDADES_1_RELOJ_A
 	cpi temp, 1
@@ -359,7 +339,7 @@ ACTUALIZANDO_DISPLAY_RELOJ_A:
 UNIDADES_1_RELOJ_A:
 	ldi ZH, high(Valores)
 	ldi ZL, low(Valores)
-	in temp, Unidades_Minutos
+	lds temp, Unidades_Minutos
 	add ZL, temp
 	ld temp, Z
 	out PORTD, temp
@@ -368,7 +348,7 @@ UNIDADES_1_RELOJ_A:
 DECENAS_1_RELOJ_A:
 	ldi ZH, high(Valores)
 	ldi ZL, low(Valores)
-	in temp, Decenas_Minutos
+	lds temp, Decenas_Minutos
 	add ZL, temp
 	ld temp, Z
 	out PORTD, temp
@@ -377,7 +357,7 @@ DECENAS_1_RELOJ_A:
 UNIDADES_2_RELOJ_A:
 	ldi ZH, high(Valores)
 	ldi ZL, low(Valores)
-	in temp, Unidades_Horas
+	lds temp, Unidades_Horas
 	add ZL, temp
 	ld temp, Z
 	out PORTD, temp
@@ -386,7 +366,7 @@ UNIDADES_2_RELOJ_A:
 DECEDAS_2_RELOJ_A:
 	ldi ZH, high(Valores)
 	ldi ZL, low(Valores)
-	in temp, Decenas_Horas
+	lds temp, Decenas_Horas
 	add ZL, temp
 	ld temp, Z
 	out PORTD, temp
@@ -404,186 +384,198 @@ DECEDAS_2_RELOJ_A:
 AJUSTE_RELOJ:
 	ldi temp, 0x00
 	sts TIMSK1, temp ; Interrupciones de Timer1 desactivadas
-	in temp, Unidades_Minuto
-	in temp2, Decenas_Minuto
-	in temp3, Unidades_Hora
-	in temp4, Decenas_Hora
+	lds temp, Unidades_Minutos
+	lds temp2, Decenas_Minutos
+	lds temp3, Unidades_Horas
+	lds temp4, Decenas_Horas
 	in temp5, PINC
 	rcall ANTIREBOTE
 	cpi temp5, 0b00000001 ; Aumentar Display 1
-	breq AUMENTAR_DISPLAY_1
+	breq AUMENTAR_DISPLAY_1_B
 	cpi temp5, 0b00000010 ; Disminuir Display 1
-	breq DISMINUIR_DISPLAY_1
+	breq DISMINUIR_DISPLAY_1_B
 	cpi temp5, 0b00000100 ; Aumentar Display 2
-	breq AUMENTAR_DISPLAY_2
+	breq AUMENTAR_DISPLAY_2_B
 	cpi temp5, 0b00001000 ; Disminuir Display 2
-	breq DISMINUIR_DISPLAY_2
-	rjmp MULTIPLEX_RELOJ_AJUSTE
+	breq DISMINUIR_DISPLAY_2_B_CL
+	rjmp MULTIPLEX_RELOJ_AJUSTE_B
 
-AUMENTAR_DISPLAY_1:
+DISMINUIR_DISPLAY_2_B_CL:
+	rcall DISMINUIR_DISPLAY_2_B
+
+AUMENTAR_DISPLAY_1_B:
 	inc temp
 	cpi temp, 11
-	brne SALIDA_INC_AJUSTE_RELOJ_1
+	brne SALIDA_INC_AJUSTE_RELOJ_1_B_CL
 	ldi temp, 0
-	out Unidades_Minuto, temp
+	sts Unidades_Minutos, temp
 	inc temp2
 	cpi temp2, 11
-	brne SALIDA_INC_AJUSTE_RELOJ_2
-	out Decenas_Minuto, temp
-	in temp, Horas_Totales
+	brne SALIDA_INC_AJUSTE_RELOJ_2_B_CL
+	sts Decenas_Minutos, temp
+	lds temp, Horas_Totales
 	inc temp
 	cpi temp, 24
-	breq SALIDA_AJUSTE_RELOJ_REINICIO
+	breq SALIDA_AJUSTE_RELOJ_REINICIO_B_CL
 	inc temp3
 	cpi temp3, 11
-	brne SALIDA_INC_AJUSTE_RELOJ_3
+	brne SALIDA_INC_AJUSTE_RELOJ_3_B
 	ldi temp, 0
-	out Unidades_Horas, temp
+	sts Unidades_Horas, temp
 	inc temp4
-	out Decenas_Horas, temp4
-	rjmp MULTIPLEX_RELOJ_AJUSTE
+	sts Decenas_Horas, temp4
+	rjmp MULTIPLEX_RELOJ_AJUSTE_B
 
-DISMINUIR_DISPLAY_1:
+SALIDA_INC_AJUSTE_RELOJ_1_B_CL:
+	rcall SALIDA_INC_AJUSTE_RELOJ_1_B
+
+SALIDA_INC_AJUSTE_RELOJ_2_B_CL:
+	rcall SALIDA_INC_AJUSTE_RELOJ_2_B
+
+SALIDA_AJUSTE_RELOJ_REINICIO_B_CL:
+	rcall SALIDA_AJUSTE_RELOJ_REINICIO_B
+
+DISMINUIR_DISPLAY_1_B:
 	dec temp
 	cpi temp, 255
-	brne SALIDA_DEC_AJUSTE_RELOJ_1
+	brne SALIDA_DEC_AJUSTE_RELOJ_1_B
 	ldi temp, 10
-	out Unidades_Minuto, temp
+	sts Unidades_Minutos, temp
 	dec temp2
 	cpi temp2, 255
-	brne SALIDA_DEC_AJUSTE_RELOJ_2
+	brne SALIDA_DEC_AJUSTE_RELOJ_2_B
 	ldi temp, 10
-	out Decenas_Minuto, temp
+	sts Decenas_Minutos, temp
 	dec temp3
 	cpi temp3, 255
-	brne SALIDA_DEC_AJUSTE_RELOJ_3
+	brne SALIDA_DEC_AJUSTE_RELOJ_3_B
 	ldi temp, 10
-	out Unidades_Hora, temp
+	sts Unidades_Horas, temp
 	dec temp4
 	cpi temp4, 255
-	brne SALIDA_DEC_AJUSTE_RELOJ_4
-	rjmp MULTIPLEX_RELOJ_AJUSTE
+	brne SALIDA_DEC_AJUSTE_RELOJ_4_B
+	rjmp MULTIPLEX_RELOJ_AJUSTE_B
 
-AUMENTAR_DISPLAY_2:
-	in temp, Horas_Totales
+AUMENTAR_DISPLAY_2_B:
+	lds temp, Horas_Totales
 	inc temp
 	cpi temp, 24
-	breq SALIDA_AJUSTE_RELOJ_REINICIO
+	breq SALIDA_AJUSTE_RELOJ_REINICIO_B
 	inc temp3
 	cpi temp3, 11
-	brne SALIDA_INC_AJUSTE_RELOJ_3
+	brne SALIDA_INC_AJUSTE_RELOJ_3_B
 	ldi temp, 0
-	out Unidades_Horas, temp
+	sts Unidades_Horas, temp
 	inc temp4
-	out Decenas_Horas, temp4
-	rjmp MULTIPLEX_RELOJ_AJUSTE
+	sts Decenas_Horas, temp4
+	rjmp MULTIPLEX_RELOJ_AJUSTE_B
 
-DISMINUIR_DISPLAY_2:
+DISMINUIR_DISPLAY_2_B:
 	dec temp3
 	cpi temp3, 255
-	brne SALIDA_DEC_AJUSTE_RELOJ_3
+	brne SALIDA_DEC_AJUSTE_RELOJ_3_B
 	ldi temp, 10
-	out Unidades_Hora, temp
+	sts Unidades_Horas, temp
 	dec temp4
 	cpi temp4, 255
-	brne SALIDA_DEC_AJUSTE_RELOJ_4
-	rjmp MULTIPLEX_RELOJ_AJUSTE
+	brne SALIDA_DEC_AJUSTE_RELOJ_4_B
+	rjmp MULTIPLEX_RELOJ_AJUSTE_B
 
-SALIDA_INC_AJUSTE_RELOJ_1:
-	out Unidades_Minuto, temp
-	rjmp MULTIPLEX_RELOJ_AJUSTE
+SALIDA_INC_AJUSTE_RELOJ_1_B:
+	sts Unidades_Minutos, temp
+	rjmp MULTIPLEX_RELOJ_AJUSTE_B
 
-SALIDA_INC_AJUSTE_RELOJ_2:
-	out Decenas_Minuto, temp2
-	rjmp MULTIPLEX_RELOJ_AJUSTE
+SALIDA_INC_AJUSTE_RELOJ_2_B:
+	sts Decenas_Minutos, temp2
+	rjmp MULTIPLEX_RELOJ_AJUSTE_B
 
-SALIDA_INC_AJUSTE_RELOJ_3:
-	out Unidades_Hora, temp3
-	rjmp MULTIPLEX_RELOJ_AJUSTE
+SALIDA_INC_AJUSTE_RELOJ_3_B:
+	sts Unidades_Horas, temp3
+	rjmp MULTIPLEX_RELOJ_AJUSTE_B
 
-SALIDA_AJUSTE_RELOJ_REINICIO:
+SALIDA_AJUSTE_RELOJ_REINICIO_B:
 	ldi temp, 0x00
-	out Unidades_Hora, temp
-	out Decenas_Hora, temp
-	rjmp MULTIPLEX_RELOJ_AJUSTE
+	sts Unidades_Horas, temp
+	sts Decenas_Horas, temp
+	rjmp MULTIPLEX_RELOJ_AJUSTE_B
 
-SALIDA_DEC_AJUSTE_RELOJ_1:
-	out Unidades_Minuto, temp
-	rjmp MULTIPLEX_RELOJ_AJUSTE
+SALIDA_DEC_AJUSTE_RELOJ_1_B:
+	sts Unidades_Minutos, temp
+	rjmp MULTIPLEX_RELOJ_AJUSTE_B
 
-SALIDA_DEC_AJUSTE_RELOJ_2:
-	out Decenas_Minuto, temp
-	rjmp MULTIPLEX_RELOJ_AJUSTE
+SALIDA_DEC_AJUSTE_RELOJ_2_B:
+	sts Decenas_Minutos, temp
+	rjmp MULTIPLEX_RELOJ_AJUSTE_B
 
-SALIDA_DEC_AJUSTE_RELOJ_3:
-	out Unidades_Hora, temp
-	rjmp MULTIPLEX_RELOJ_AJUSTE
+SALIDA_DEC_AJUSTE_RELOJ_3_B:
+	sts Unidades_Horas, temp
+	rjmp MULTIPLEX_RELOJ_AJUSTE_B
 
-SALIDA_DEC_AJUSTE_RELOJ_4:
-	out Decenas_Hora, temp
-	rjmp MULTIPLEX_RELOJ_AJUSTE
+SALIDA_DEC_AJUSTE_RELOJ_4_B:
+	sts Decenas_Horas, temp
+	rjmp MULTIPLEX_RELOJ_AJUSTE_B
 
-MULTIPLEX_RELOJ_AJUSTE:
-	in temp, Display_Actual
+MULTIPLEX_RELOJ_AJUSTE_B:
+	lds temp, Display_Actual
 	inc temp
 	cpi temp, 4
-	brge REINICIO_DISPLAY_RELOJ
-	out Display_Actual, temp
-	rjmp ACTUALIZANDO_DISPLAY_RELOJ
+	brge REINICIO_DISPLAY_RELOJ_B
+	sts Display_Actual, temp
+	rjmp ACTUALIZANDO_DISPLAY_RELOJ_B
 
-REINICIO_DISPLAY_RELOJ:
+REINICIO_DISPLAY_RELOJ_B:
 	ldi temp, 0 
-	out Display_Actual
+	sts  Display_Actual, temp
 
-ACTUALIZANDO_DISPLAY_RELOJ:
+ACTUALIZANDO_DISPLAY_RELOJ_B:
 	ldi temp, 0x00
 	out PORTC, temp
-	in temp, Display_Actual
+	lds temp, Display_Actual
 	ldi ZH, high(Displays)
 	ldi ZL, low(Displays)
 	add ZL, temp
 	ld temp, Z
 	out PORTD, temp
-	in temp, Display_Actual
+	lds temp, Display_Actual
 	cpi temp, 0 
-	breq UNIDADES_1_RELOJ
+	breq UNIDADES_1_RELOJ_B
 	cpi temp, 1
-	breq DECENAS_1_RELOJ
+	breq DECENAS_1_RELOJ_B
 	cpi temp, 2
-	breq UNIDADES_2_RELOJ
-	rjmp DECEDAS_2_RELOJ
+	breq UNIDADES_2_RELOJ_B
+	rjmp DECEDAS_2_RELOJ_B
 
-UNIDADES_1_RELOJ:
+UNIDADES_1_RELOJ_B:
 	ldi ZH, high(Valores)
 	ldi ZL, low(Valores)
-	in temp, Unidades_Minutos
+	lds temp, Unidades_Minutos
 	add ZL, temp
 	ld temp, Z
 	out PORTD, temp
 	rjmp AJUSTE_RELOJ
 
-DECENAS_1_RELOJ:
+DECENAS_1_RELOJ_B:
 	ldi ZH, high(Valores)
 	ldi ZL, low(Valores)
-	in temp, Decenas_Minutos
+	lds temp, Decenas_Minutos
 	add ZL, temp
 	ld temp, Z
 	out PORTD, temp
 	rjmp AJUSTE_RELOJ
 
-UNIDADES_2_RELOJ:
+UNIDADES_2_RELOJ_B:
 	ldi ZH, high(Valores)
 	ldi ZL, low(Valores)
-	in temp, Unidades_Horas
+	lds temp, Unidades_Horas
 	add ZL, temp
 	ld temp, Z
 	out PORTD, temp
 	rjmp AJUSTE_RELOJ
 
-DECEDAS_2_RELOJ:
+DECEDAS_2_RELOJ_B:
 	ldi ZH, high(Valores)
 	ldi ZL, low(Valores)
-	in temp, Decenas_Horas
+	lds temp, Decenas_Horas
 	add ZL, temp
 	ld temp, Z
 	out PORTD, temp
@@ -598,39 +590,39 @@ DECEDAS_2_RELOJ:
 ;- - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - 
 ;______________________________________________________________________________
 MULTIPLEX_FECHA:
-	in   temp, Display_Actual
+	lds   temp, Display_Actual
 	inc  temp
 	cpi  temp, 4
 	brge REINICIO_DISPLAY_FECHA_1
-	out  Display_Actual, temp
+	sts  Display_Actual, temp
 	rjmp ACTUALIZANDO_DISPLAY_FECHA_1
 
 REINICIO_DISPLAY_FECHA_1:
 	ldi  temp, 0 
-	out  Display_Actual
+	sts  Display_Actual, temp
 
 ACTUALIZANDO_DISPLAY_FECHA_1:
 	ldi  temp, 0x00
 	out  PORTC, temp
-	in   temp, Display_Actual
+	lds   temp, Display_Actual
 	ldi  ZH, high(Displays)
 	ldi  ZL, low(Displays)
 	add  ZL, temp
 	ld   temp, Z
 	out  PORTD, temp
-	in   temp, Display_Actual
+	lds   temp, Display_Actual
 	cpi  temp, 0 
-	breq UNIDADES_1_FECHA
+	breq UNIDADES_1_FECHA_1
 	cpi  temp, 1
-	breq DECENAS_1_FECHA
+	breq DECENAS_1_FECHA_1
 	cpi  temp, 2
-	breq UNIDADES_2_FECHA
-	rjmp DECEDAS_2_FECHA
+	breq UNIDADES_2_FECHA_1
+	rjmp DECEDAS_2_FECHA_1
 
 UNIDADES_1_FECHA_1:
 	ldi  ZH, high(Valores)
 	ldi  ZL, low(Valores)
-	in   temp, Unidades_Dia
+	lds   temp, Unidades_Dia
 	add  ZL, temp
 	ld   temp, Z
 	out  PORTD, temp
@@ -639,7 +631,7 @@ UNIDADES_1_FECHA_1:
 DECENAS_1_FECHA_1:
 	ldi  ZH, high(Valores)
 	ldi  ZL, low(Valores)
-	in   temp, Decenas_Dia
+	lds   temp, Decenas_Dia
 	add  ZL, temp
 	ld   temp, Z
 	out  PORTD, temp
@@ -648,7 +640,7 @@ DECENAS_1_FECHA_1:
 UNIDADES_2_FECHA_1:
 	ldi  ZH, high(Valores)
 	ldi  ZL, low(Valores)
-	in   temp, Unidades_Mes
+	lds   temp, Unidades_Mes
 	add  ZL, temp
 	ld   temp, Z
 	out  PORTD, temp
@@ -657,7 +649,7 @@ UNIDADES_2_FECHA_1:
 DECEDAS_2_FECHA_1:
 	ldi  ZH, high(Valores)
 	ldi  ZL, low(Valores)
-	in   temp, Decenas_Mes
+	lds   temp, Decenas_Mes
 	add  ZL, temp
 	ld   temp, Z
 	out  PORTD, temp
@@ -675,70 +667,85 @@ DECEDAS_2_FECHA_1:
 AJUSTE_FECHA:
 	ldi temp, 0x00
 	sts TIMSK1, temp ; Interrupciones de Timer1 desactivadas
-	in temp, Unidades_Dia
-	in temp2, Decenas_Dia
-	in temp3, Unidades_Mes
-	in temp4, Decenas_Mes
+	lds temp, Unidades_Dia
+	lds temp2, Decenas_Dia
+	lds temp3, Unidades_Mes
+	lds temp4, Decenas_Mes
 	in temp5, PINC
 	rcall ANTIREBOTE
 	cpi temp5, 0b00000001 ; Aumentar Display 1
-	breq AUMENTAR_DISPLAY_1_FECHA
+	breq AUMENTAR_DISPLAY_1_FECHA_CL
 	cpi temp5, 0b00000010 ; Disminuir Display 1
 	breq DISMINUIR_DISPLAY_1_FECHA
 	cpi temp5, 0b00000100 ; Aumentar Display 2
 	breq AUMENTAR_DISPLAY_2_FECHA
 	cpi temp5, 0b00001000 ; Disminuir Display 2
-	breq DISMINUIR_DISPLAY_2_FECHA
+	breq DISMINUIR_DISPLAY_2_FECHA_CL
 	rjmp MULTIPLEX_FECHA_AJUSTE
+
+AUMENTAR_DISPLAY_1_FECHA_CL:
+	rcall AUMENTAR_DISPLAY_1_FECHA
+
+DISMINUIR_DISPLAY_2_FECHA_CL:
+	rcall DISMINUIR_DISPLAY_2_FECHA
 
 AUMENTAR_DISPLAY_1_FECHA:
 	inc temp
 	cpi temp, 11
-	brne SALIDA_INC_AJUSTE_FECHA_1
+	brne SALIDA_INC_AJUSTE_FECHA_1_CL
 	ldi temp, 1
-	out Unidades_Dia, temp
+	sts Unidades_Dia, temp
 	inc temp2
 	cpi temp2, 11
-	brne SALIDA_INC_AJUSTE_FECHA_2
-	out Decenas_Dia, temp
-	in temp, Meses_Totales
+	brne SALIDA_INC_AJUSTE_FECHA_2_CL
+	sts Decenas_Dia, temp
+	lds temp, Meses_Totales
 	inc temp
 	cpi temp, 24
-	breq SALIDA_AJUSTE_FECHA_REINICIO
+	breq SALIDA_AJUSTE_FECHA_REINICIO_CL
 	inc temp3
 	cpi temp3, 11
-	brne SALIDA_INC_AJUSTE_FECHA_3
+	brne SALIDA_INC_AJUSTE_FECHA_3_CL
 	ldi temp, 0
-	out Unidades_Mes, temp
+	sts Unidades_Mes, temp
 	inc temp4
-	out Decenas_Mes, temp4
+	sts Decenas_Mes, temp4
 	rjmp MULTIPLEX_FECHA_AJUSTE
+
+SALIDA_INC_AJUSTE_FECHA_1_CL:
+	rcall SALIDA_INC_AJUSTE_FECHA_1
+SALIDA_INC_AJUSTE_FECHA_2_CL:
+	rcall SALIDA_INC_AJUSTE_FECHA_2
+SALIDA_AJUSTE_FECHA_REINICIO_CL:
+	rcall SALIDA_AJUSTE_FECHA_REINICIO
+SALIDA_INC_AJUSTE_FECHA_3_CL:
+	rcall SALIDA_INC_AJUSTE_FECHA_3
 
 DISMINUIR_DISPLAY_1_FECHA:
 	dec temp
 	cpi temp, 255
 	brne SALIDA_DEC_AJUSTE_FECHA_1
 	ldi temp, 10
-	out Unidades_Dia, temp
+	sts Unidades_Dia, temp
 	dec temp2
 	cpi temp2, 255
 	brne SALIDA_DEC_AJUSTE_FECHA_2
 	ldi temp, 10
-	out Decenas_Dia, temp
+	sts Decenas_Dia, temp
 	dec temp3
 	cpi temp3, 255
 	brne SALIDA_DEC_AJUSTE_FECHA_3
 	ldi temp, 10
-	out Unidades_Mes, temp
+	sts Unidades_Mes, temp
 	dec temp4
 	cpi temp4, 255
 	brne SALIDA_DEC_AJUSTE_FECHA_4
 	ldi temp, 0
-	out Decenas_Mes, temp
+	sts Decenas_Mes, temp
 	rjmp MULTIPLEX_FECHA_AJUSTE
 
 AUMENTAR_DISPLAY_2_FECHA:
-	in temp, Horas_Totales
+	lds temp, Horas_Totales
 	inc temp
 	cpi temp, 24
 	breq SALIDA_AJUSTE_FECHA_REINICIO
@@ -746,9 +753,9 @@ AUMENTAR_DISPLAY_2_FECHA:
 	cpi temp3, 11
 	brne SALIDA_INC_AJUSTE_FECHA_3
 	ldi temp, 0
-	out Unidades_Mess, temp
+	sts Unidades_Mes, temp
 	inc temp4
-	out Decenas_Mess, temp4
+	sts Decenas_Mes, temp4
 	rjmp MULTIPLEX_FECHA_AJUSTE
 
 DISMINUIR_DISPLAY_2_FECHA:
@@ -756,68 +763,68 @@ DISMINUIR_DISPLAY_2_FECHA:
 	cpi temp3, 255
 	brne SALIDA_DEC_AJUSTE_FECHA_3
 	ldi temp, 10
-	out Unidades_Mes, temp
+	sts Unidades_Mes, temp
 	dec temp4
 	cpi temp4, 255
 	brne SALIDA_DEC_AJUSTE_FECHA_4
 	rjmp MULTIPLEX_FECHA_AJUSTE
 
 SALIDA_INC_AJUSTE_FECHA_1:
-	out Unidades_Dia, temp
+	sts Unidades_Dia, temp
 	rjmp MULTIPLEX_FECHA_AJUSTE
 
 SALIDA_INC_AJUSTE_FECHA_2:
-	out Decenas_Dia, temp2
+	sts Decenas_Dia, temp2
 	rjmp MULTIPLEX_FECHA_AJUSTE
 
 SALIDA_INC_AJUSTE_FECHA_3:
-	out Unidades_Mes, temp3
+	sts Unidades_Mes, temp3
 	rjmp MULTIPLEX_FECHA_AJUSTE
 
 SALIDA_AJUSTE_FECHA_REINICIO:
 	ldi temp, 0x00
-	out Unidades_Mes, temp
-	out Decenas_Mes, temp
+	sts Unidades_Mes, temp
+	sts Decenas_Mes, temp
 	rjmp MULTIPLEX_FECHA_AJUSTE
 
 SALIDA_DEC_AJUSTE_FECHA_1:
-	out Unidades_Dia, temp
+	sts Unidades_Dia, temp
 	rjmp MULTIPLEX_FECHA_AJUSTE
 
 SALIDA_DEC_AJUSTE_FECHA_2:
-	out Decenas_Dia, temp
+	sts Decenas_Dia, temp
 	rjmp MULTIPLEX_FECHA_AJUSTE
 
 SALIDA_DEC_AJUSTE_FECHA_3:
-	out Unidades_Mes, temp
+	sts Unidades_Mes, temp
 	rjmp MULTIPLEX_FECHA_AJUSTE
 
 SALIDA_DEC_AJUSTE_FECHA_4:
-	out Decenas_Mes, temp
+	sts Decenas_Mes, temp
 	rjmp MULTIPLEX_FECHA_AJUSTE
 
 MULTIPLEX_FECHA_AJUSTE:
-	in   temp, Display_Actual
+	lds   temp, Display_Actual
 	inc  temp
 	cpi  temp, 4
 	brge REINICIO_DISPLAY_FECHA
-	out  Display_Actual, temp
+	sts  Display_Actual, temp
 	rjmp ACTUALIZANDO_DISPLAY_FECHA
 
 REINICIO_DISPLAY_FECHA:
 	ldi  temp, 0 
-	out  Display_Actual
+	sts  Display_Actual, temp
 
 ACTUALIZANDO_DISPLAY_FECHA:
 	ldi  temp, 0x00
 	out  PORTC, temp
-	in   temp, Display_Actual
+	lds   temp, Display_Actual
 	ldi  ZH, high(Displays)
 	ldi  ZL, low(Displays)
 	add  ZL, temp
 	ld   temp, Z
 	out  PORTD, temp
-	in   temp, Display_Actual
+	lds   temp, Display_Actual
 	cpi  temp, 0 
 	breq UNIDADES_1_FECHA
 	cpi  temp, 1
@@ -829,7 +836,7 @@ ACTUALIZANDO_DISPLAY_FECHA:
 UNIDADES_1_FECHA:
 	ldi  ZH, high(Valores)
 	ldi  ZL, low(Valores)
-	in   temp, Unidades_Dia
+	lds   temp, Unidades_Dia
 	add  ZL, temp
 	ld   temp, Z
 	out  PORTD, temp
@@ -838,7 +845,7 @@ UNIDADES_1_FECHA:
 DECENAS_1_FECHA:
 	ldi  ZH, high(Valores)
 	ldi  ZL, low(Valores)
-	in   temp, Decenas_Dia
+	lds   temp, Decenas_Dia
 	add  ZL, temp
 	ld   temp, Z
 	out  PORTD, temp
@@ -847,7 +854,7 @@ DECENAS_1_FECHA:
 UNIDADES_2_FECHA:
 	ldi  ZH, high(Valores)
 	ldi  ZL, low(Valores)
-	in   temp, Unidades_Mes
+	lds   temp, Unidades_Mes
 	add  ZL, temp
 	ld   temp, Z
 	out  PORTD, temp
@@ -856,7 +863,7 @@ UNIDADES_2_FECHA:
 DECEDAS_2_FECHA:
 	ldi  ZH, high(Valores)
 	ldi  ZL, low(Valores)
-	in   temp, Decenas_Mes
+	lds   temp, Decenas_Mes
 	add  ZL, temp
 	ld   temp, Z
 	out  PORTD, temp
@@ -871,30 +878,38 @@ DECEDAS_2_FECHA:
 ;- - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - 
 ;______________________________________________________________________________
 ALARMA:
-	out Unidad_Minuto_Alarma, Unidad_Minuto
-	out Decena_Minuto_Alarma, Decena_Minuto
-	out Unidad_Hora_Alarma  , Unidad_Hora
-	out Decena_Hora_Alarma  , Decena_Hora
+	lds temp, Unidades_Minutos
+	sts Unidad_Minuto_Alarma, temp
+	lds temp, Decenas_Minutos
+	sts Decena_Minuto_Alarma, temp
+	lds temp, Unidades_Horas
+	sts Unidad_Hora_Alarma, temp
+	lds temp, Decenas_Horas
+	sts Decena_Hora_Alarma, temp
 	rjmp ALARMA_ACTIVA
 
 ALARMA_ACTIVA:
 	ldi temp, 0b00000100
 	out PORTD, temp
 	; Condición 1
-    in temp, Decena_Hora
-    cp temp, Decena_Hora_Alarma
+    lds temp, Decenas_Horas
+	lds temp2, Decena_Hora_Alarma
+    cp temp, temp2
     brne ALARMA_ACTIVA
 	; Condición 2
-    in temp, Unidad_Hora
-    cp temp, Unidad_Hora_Alarma
+    lds temp, Unidades_Horas
+	lds temp2, Unidad_Hora_Alarma
+    cp temp, temp2
     brne ALARMA_ACTIVA
 	; Condición 3
-    in temp, Decena_Minuto
-    cp temp, Decena_Minuto_Alarma
+    lds temp, Decenas_Minutos
+	lds temp2, Decena_Minuto_Alarma
+    cp temp, temp2
     brne ALARMA_ACTIVA
 	; Condición 4
-    in temp, Unidad_Minuto
-    cp temp, Unidad_Minuto_Alarma
+    lds temp, Unidades_Minutos
+	lds temp2, Unidad_Minuto_Alarma
+    cp temp, temp2
     brne ALARMA_ACTIVA
 	; Se cumple todo y wiu wiu 
     rjmp ACTIVAR_ALARMA  
@@ -914,10 +929,10 @@ ACTIVAR_ALARMA:
 DESACTIVAR_ALARMA:
 	ldi temp, 0x00
 	out PORTB, temp
-	out Unidad_Minuto_Alarma, temp
-	out Decena_Minuto_Alarma, temp
-	out Unidad_Hora_Alarma  , temp
-	out Decena_Hora_Alarma  , temp
+	sts Unidad_Minuto_Alarma, temp
+	sts Decena_Minuto_Alarma, temp
+	sts Unidad_Hora_Alarma  , temp
+	sts Decena_Hora_Alarma  , temp
 	rjmp MAIN_LOOP
 ;______________________________________________________________________________
 
@@ -929,99 +944,109 @@ DESACTIVAR_ALARMA:
 ;- - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - 
 ;______________________________________________________________________________
 RELOJ:
-	inc Segundos ; Overflow cada 1seg, por lo tanto a los 60 oveflow hay 1 minuto
-	cpi Segundos, 60 
-	brne SALIDA
+	lds temp, Segundos
+	inc temp ; Overflow cada 1seg, por lo tanto a los 60 oveflow hay 1 minuto
+	cpi temp, 60 
+	brne SALIDA_CL
 	// Cambio en unidad de minutos
-	in temp, Unidades_Minutos
+	lds temp, Unidades_Minutos
 	inc temp
 	cpi temp, 11
-	brne SALIDA_RELOJ_1
+	brne SALIDA_RELOJ_1_CL
 	//Cambio en decena de minutos
 	ldi temp, 0
-	out Unidades_Minutos, temp
-	in temp, Decenas_Minutos
+	sts Unidades_Minutos, temp
+	lds temp, Decenas_Minutos
 	inc temp
 	cpi temp, 11
-	brne SALIDA_RELOJ_2
+	brne SALIDA_RELOJ_2_CL
 	// Cambio unidades horas
 	ldi temp, 0
-	out Decenas_Minutos, temp
-	in temp, Horas_Totales
+	sts Decenas_Minutos, temp
+	lds temp, Horas_Totales
 	inc temp
 	cpi temp, 24
 	breq REINICIO_HORAS
-	out Horas_Totales, temp
-	in temp, Unidades_Horas
+	sts Horas_Totales, temp
+	lds temp, Unidades_Horas
 	inc temp
 	cpi temp, 11
-	brne SALIDA_RELOJ_3
+	brne SALIDA_RELOJ_3_CL
 	// Cambio decenas horas
 	ldi temp, 0
-	out Unidades_Horas, temp
-	in temp, Decenas_Horas
+	sts Unidades_Horas, temp
+	lds temp, Decenas_Horas
 	inc temp
-	out Decenas_Horas
+	sts Decenas_Horas, temp
 	reti
+
+SALIDA_CL:
+	rcall SALIDA
+SALIDA_RELOJ_1_CL:
+	rcall SALIDA_RELOJ_1
+SALIDA_RELOJ_2_CL:
+	rcall SALIDA_RELOJ_2
+SALIDA_RELOJ_3_CL:
+	rcall SALIDA_RELOJ_3
 
 REINICIO_HORAS:
 	ldi temp, 0x00
-	out Unidades_Hora, temp
-	out Decenas_Hora, temp
-	out Horas_Totales, temp
+	sts Unidades_Horas, temp
+	sts Decenas_Horas, temp
+	sts Horas_Totales, temp
 	rjmp CONDICIONAMOS //Salta a fecha, pero tiene que haber algo que permita el cambio para el multiplexado, ademas, fecha es otro estado :p
 	//Quiza el reloj (Conteo) como tal no es el estado, sino solo el multiplexado del tiempo
 	//Hacer Varios multiplexados? Uno tiempo y otro fecha? 
 	//Se puede, hay que verificar el estado en el que se encuentre el sistema y mandar la interrupción del timer0 ahí :p
 
 CONDICIONAMOS:
-	in   temp, Decena_Mes
+	lds   temp, Decenas_Mes
 	cpi  temp, 0
-	breq CONDICION1
+	breq CONDICION1_A
 	rjmp CONTROL_FECHA
 
 CONDICION1_A:
-	in   temp, Unidades_Mes
+	lds   temp, Unidades_Mes
 	cpi  temp, 2
 	breq FEBRERO
 	rjmp CONTROL_FECHA
 
 CONDICION2_A:
-	in   temp, Decenas_Dia
+	lds   temp, Decenas_Dia
 	cpi  temp, 2
 	breq CONDICION3_A
 	rjmp CONTROL_FECHA
 
 CONDICION3_A:
-	in   temp, Unidades_Dia
+	lds   temp, Unidades_Dia
 	cpi  temp, 9
 	breq FEBRERO
 	rjmp CONTROL_FECHA
 
 CONTROL_FECHA:
-	in   temp, Unidades_Dia
+	lds   temp, Unidades_Dia
 	inc  temp
 	cpi  temp, 11
 	brne SALIDA_FECHA_1
 	ldi  temp, 0x01 ; Regresar el valor de la unidad de dia a 1 
-	out  Unidades_Dia, temp
-	in   temp, Decenas_Dia
+	sts  Unidades_Dia, temp
+	lds   temp, Decenas_Dia
 	inc  temp
 	cpi  temp, 4
 	brne SALIDA_FECHA_2
 	ldi  temp, 0x00 ; Regresar el valor de las decenas de dia a 0
-	out  Decenas_Dia, temp
-	in   temp, Meses_Totales
+	sts  Decenas_Dia, temp
+	lds   temp, Meses_Totales
 	inc  temp
 	cpi  temp, 12
 	brne REINICIO_MES  ; Se cumple unos 12 meses y se reinicia el contador
-	in   temp, Unidades_Mes
+	lds   temp, Unidades_Mes
 	inc  temp
 	cpi  temp, 11
 	brne SALIDA_FECHA_3
 	ldi  temp, 0x00 ; Regresar el valor de la unidad de meses a 0 
-	out  Unidades_Mes, temp
-	in   temp, Decenas_Mes
+	sts  Unidades_Mes, temp
+	lds   temp, Decenas_Mes
 	inc  temp ; Se incrementa el mes a 1 y sale
 
 SALIDA:
@@ -1029,42 +1054,42 @@ SALIDA:
 
 FEBRERO:
 	ldi temp, 0x00
-	out Decenas_Dia, temp
+	sts Decenas_Dia, temp
 	ldi temp, 0x01
-	out Unidades_Dia, temp
+	sts Unidades_Dia, temp
 	ldi temp, 0x03
-	out Unidades_Mes, temp
+	sts Unidades_Mes, temp
 	reti
 
 REINICIO_MES:
 	ldi temp, 0x01
-	out Unidades_Mes, temp
+	sts Unidades_Mes, temp
 	ldi temp, 0x00
-	out Decenas_Mes, temp
+	sts Decenas_Mes, temp
 	reti
 
 SALIDA_RELOJ_1:
-	out Unidades_Minuto, temp
+	sts Unidades_Minutos, temp
 	reti
 
 SALIDA_RELOJ_2:
-	out Decenas_Minuto, temp
+	sts Decenas_Minutos, temp
 	reti
 
 SALIDA_RELOJ_3:
-	out Unidades_Hora, temp
+	sts Unidades_Horas, temp
 	reti
 
 SALIDA_FECHA_1:
-	out Unidades_Dia, temp
+	sts Unidades_Dia, temp
 	reti
 
 SALIDA_FECHA_2:
-	out Decenas_Dia, temp
+	sts Decenas_Dia, temp
 	reti
 
 SALIDA_FECHA_3:
-	out Unidades_Mes, temp
+	sts Unidades_Mes, temp
 	reti
 ;______________________________________________________________________________
 
@@ -1091,3 +1116,11 @@ DELAY_INNER:
     pop r17
     ret
 ;______________________________________________________________________________
+
+//_________________________________
+//*********************************
+//         T A B L A S
+//_________________________________
+//*********************************
+Valores: .db 0x3F, 0x06, 0x5B, 0x4F, 0x66, 0x6D, 0x7D, 0x07, 0x7F, 0x6F
+Displays: .db 0x01, 0x02, 0x04, 0x08
