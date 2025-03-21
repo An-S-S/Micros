@@ -27,11 +27,11 @@
 // -> 1. Reloj
 // -> 2. Hora
 // -> 3. Configuración(Parpadeante)/Alarma(Permanente)
-.def temp  = r16
-.def temp2 = r17
-.def temp3 = r18
-.def temp4 = r19
-.def temp5 = r20
+.def temp  = r15
+.def temp2 = r16
+.def temp3 = r17
+.def temp4 = r18
+.def temp5 = r19
 //_________________________________
 //*********************************
 //    I N I C I O  T A B L A S
@@ -42,78 +42,45 @@ ldi xl, 0x00
 ldi zh, high(Valores*2)
 ldi zl, low(Valores*2)
 
-
-//_________________________________
-//*********************************
-//  I N T E R R U P C I O N E S 
-//_________________________________
-//*********************************
-.cseg
-.org 0x00
-	rjmp INICIO
-.org PCINT0addr
-	rjmp ISR_PC
-.org OVF0addr
-	rjmp IDENTIFICAR_ESTADO
-.org OVF1addr
-	rjmp RELOJ
-
-
+.dseg
 //_________________________________
 //*********************************
 //         V A L O R E S 
 //_________________________________
 //*********************************
-Segundos:
-.db 0x00
+Segundos: .db 0x00
 
-Unidades_Minutos:
-.db 0x00
+Unidades_Minutos: .db 0x00
 
-Decenas_Minutos:
-.db 0x00
+Decenas_Minutos: .db 0x00
 
-Unidades_Horas:
-.db 0x00
+Unidades_Horas: .db 0x00
 
-Decenas_Horas:
-.db 0x00
+Decenas_Horas: .db 0x00
 
-Horas_Totales:
-.db 0x00
+Horas_Totales: .db 0x00
 
-Unidades_Dia:
-.db 0x00
+Unidades_Dia: .db 0x00
 
-Decenas_Dia:
-.db 0x00
+Decenas_Dia: .db 0x00
 
-Unidades_Mes:
-.db 0x00
+Unidades_Mes: .db 0x00
 
-Decenas_Mes:
-.db 0x00
+Decenas_Mes: .db 0x00
 
-Meses_Totales:
-.db 0x00
+Meses_Totales: .db 0x00
 
-Estado: 
-.db 0x00
+Estado:  .db 0x00
 
-Display_Actual:
-.db 0x00
+Display_Actual: .db 0x00
 
-Unidad_Minuto_Alarma:
-.db 0x00
+Unidad_Minuto_Alarma: .db 0x00
 
-Decena_Minuto_Alarma:
-.db 0x00
+Decena_Minuto_Alarma: .db 0x00
 
-Unidad_Hora_Alarma:
-.db 0x00
+Unidad_Hora_Alarma: .db 0x00
 
-Decena_Hora_Alarma:
-.db 0x00
+Decena_Hora_Alarma: .db 0x00
 
 //_________________________________
 //*********************************
@@ -125,6 +92,21 @@ Valores:
 
 Displays:
 .db 0x01, 0x02, 0x04, 0x08
+//_________________________________
+//*********************************
+//  I N T E R R U P C I O N E S 
+//_________________________________
+//*********************************
+.cseg
+.org 0x1200
+	rjmp INICIO
+.org PCMSK0
+	rjmp ISR_PC
+.org OVF0addr
+	rjmp IDENTIFICAR_ESTADO
+.org OVF1addr
+	rjmp RELOJ
+
 ;______________________________________________________________________________
 
 
@@ -304,7 +286,7 @@ ISR_PC:
     ldi temp, (1<<TOIE1) ; Habilitar interrupción por overflow
     sts TIMSK1, temp
 	in temp, PINC
-	sbrc temp, PB3
+	eor temp, (1 << PB3)
 	rjmp CAMBIO_ESTADOS
 
 CAMBIO_ESTADOS:
@@ -344,19 +326,19 @@ CONFIRMAR:
 ;				            P R I M E R - E S T A D O
 ;- - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - 
 ;______________________________________________________________________________
-MULTIPLEX_RELOJ:
+MULTIPLEX_RELOJ_A:
 	in temp, Display_Actual
 	inc temp
 	cpi temp, 4
-	brge REINICIO_DISPLAY_RELOJ
+	brge REINICIO_DISPLAY_RELOJ_A
 	out Display_Actual, temp
-	rjmp ACTUALIZANDO_DISPLAY_RELOJ
+	rjmp ACTUALIZANDO_DISPLAY_RELOJ_A
 
-REINICIO_DISPLAY_RELOJ:
+REINICIO_DISPLAY_RELOJ_A:
 	ldi temp, 0 
 	out Display_Actual
 
-ACTUALIZANDO_DISPLAY_RELOJ:
+ACTUALIZANDO_DISPLAY_RELOJ_A:
 	ldi temp, 0x00
 	out PORTC, temp
 	in temp, Display_Actual
@@ -367,14 +349,14 @@ ACTUALIZANDO_DISPLAY_RELOJ:
 	out PORTD, temp
 	in temp, Display_Actual
 	cpi temp, 0 
-	breq UNIDADES_1_RELOJ
+	breq UNIDADES_1_RELOJ_A
 	cpi temp, 1
-	breq DECENAS_1_RELOJ
+	breq DECENAS_1_RELOJ_A
 	cpi temp, 2
-	breq UNIDADES_2_RELOJ
-	rjmp DECEDAS_2_RELOJ
+	breq UNIDADES_2_RELOJ_A
+	rjmp DECEDAS_2_RELOJ_A
 
-UNIDADES_1_RELOJ:
+UNIDADES_1_RELOJ_A:
 	ldi ZH, high(Valores)
 	ldi ZL, low(Valores)
 	in temp, Unidades_Minutos
@@ -383,7 +365,7 @@ UNIDADES_1_RELOJ:
 	out PORTD, temp
 	reti
 
-DECENAS_1_RELOJ:
+DECENAS_1_RELOJ_A:
 	ldi ZH, high(Valores)
 	ldi ZL, low(Valores)
 	in temp, Decenas_Minutos
@@ -392,7 +374,7 @@ DECENAS_1_RELOJ:
 	out PORTD, temp
 	reti
 
-UNIDADES_2_RELOJ:
+UNIDADES_2_RELOJ_A:
 	ldi ZH, high(Valores)
 	ldi ZL, low(Valores)
 	in temp, Unidades_Horas
@@ -401,7 +383,7 @@ UNIDADES_2_RELOJ:
 	out PORTD, temp
 	reti
 
-DECEDAS_2_RELOJ:
+DECEDAS_2_RELOJ_A:
 	ldi ZH, high(Valores)
 	ldi ZL, low(Valores)
 	in temp, Decenas_Horas
@@ -619,15 +601,15 @@ MULTIPLEX_FECHA:
 	in   temp, Display_Actual
 	inc  temp
 	cpi  temp, 4
-	brge REINICIO_DISPLAY_FECHA
+	brge REINICIO_DISPLAY_FECHA_1
 	out  Display_Actual, temp
-	rjmp ACTUALIZANDO_DISPLAY_FECHA
+	rjmp ACTUALIZANDO_DISPLAY_FECHA_1
 
-REINICIO_DISPLAY_FECHA:
+REINICIO_DISPLAY_FECHA_1:
 	ldi  temp, 0 
 	out  Display_Actual
 
-ACTUALIZANDO_DISPLAY_FECHA:
+ACTUALIZANDO_DISPLAY_FECHA_1:
 	ldi  temp, 0x00
 	out  PORTC, temp
 	in   temp, Display_Actual
@@ -645,7 +627,7 @@ ACTUALIZANDO_DISPLAY_FECHA:
 	breq UNIDADES_2_FECHA
 	rjmp DECEDAS_2_FECHA
 
-UNIDADES_1_FECHA:
+UNIDADES_1_FECHA_1:
 	ldi  ZH, high(Valores)
 	ldi  ZL, low(Valores)
 	in   temp, Unidades_Dia
@@ -654,7 +636,7 @@ UNIDADES_1_FECHA:
 	out  PORTD, temp
 	reti
 
-DECENAS_1_FECHA:
+DECENAS_1_FECHA_1:
 	ldi  ZH, high(Valores)
 	ldi  ZL, low(Valores)
 	in   temp, Decenas_Dia
@@ -663,7 +645,7 @@ DECENAS_1_FECHA:
 	out  PORTD, temp
 	reti
 
-UNIDADES_2_FECHA:
+UNIDADES_2_FECHA_1:
 	ldi  ZH, high(Valores)
 	ldi  ZL, low(Valores)
 	in   temp, Unidades_Mes
@@ -672,7 +654,7 @@ UNIDADES_2_FECHA:
 	out  PORTD, temp
 	reti
 
-DECEDAS_2_FECHA:
+DECEDAS_2_FECHA_1:
 	ldi  ZH, high(Valores)
 	ldi  ZL, low(Valores)
 	in   temp, Decenas_Mes
@@ -998,23 +980,23 @@ CONDICIONAMOS:
 	breq CONDICION1
 	rjmp CONTROL_FECHA
 
-CONDICION1:
+CONDICION1_A:
 	in   temp, Unidades_Mes
 	cpi  temp, 2
 	breq FEBRERO
 	rjmp CONTROL_FECHA
 
-CONDICION2:
+CONDICION2_A:
 	in   temp, Decenas_Dia
 	cpi  temp, 2
-	breq CONDICION3:
+	breq CONDICION3_A
 	rjmp CONTROL_FECHA
 
-CONDICION3:
+CONDICION3_A:
 	in   temp, Unidades_Dia
 	cpi  temp, 9
 	breq FEBRERO
-	rjmp CONTROL_FECHa
+	rjmp CONTROL_FECHA
 
 CONTROL_FECHA:
 	in   temp, Unidades_Dia
@@ -1054,7 +1036,7 @@ FEBRERO:
 	out Unidades_Mes, temp
 	reti
 
-REINICIO_MES
+REINICIO_MES:
 	ldi temp, 0x01
 	out Unidades_Mes, temp
 	ldi temp, 0x00
