@@ -22,7 +22,7 @@ const uint8_t Digito_Displ[16]= {
 	
 };
 uint8_t Contador = 0;
-uint8_t Valor_ADC = 0;
+uint16_t Valor_ADC = 0;
 /****************************************/
 // Function prototypes
 /****************************************/
@@ -44,25 +44,24 @@ int main()
 		{
 			Contador++;
 			PORTD = Contador;
+			_delay_ms(200);
 		}
 		
 		if (boton_presionado(PINB1))
 		{
 			Contador--;
 			PORTD = Contador;
+			_delay_ms(200);
 		}
-		
-		if (Valor_ADC > Contador) 
-		{
-			PORTB |= (1 << PINB5); // Encender LED
-		} else 
-		{
-			PORTB &= ~(1 << PINB5); // Apagar LED
-		}
+
 		
 		mux();
 	}
 
+while (Valor_ADC > Contador)
+{
+	PORTB = (1 << PINB5);
+}
 	
 }
 
@@ -88,7 +87,7 @@ void setup()
 	PORTC	= 0x00; // Inicio Apagado
 	// Configurar entradas
 	DDRB   |= 0x00;
-	DDRB   |= (1 << PINB5)  | (1 << PINB3) | (1 << PINB2);
+	PORTB  |= (1 << PINB0)  | (1 << PINB1);
 	// Configurar pines inecesarios
 	UCSR0B  = 0x00;
 //-------------------------------------------
@@ -146,25 +145,19 @@ void initADC()
 
 void mux()
 {	
-	uint8_t Valor_Dc = Valor_ADC / 16;
-	uint8_t Valor_Un = Valor_ADC % 16;
-
-	// Apagar ambos segmentos primero
-	PORTB &= ~((1 << PINB3) | (1 << PINB2));
-	
-	// Mostrar decenas
-	PORTC = Digito_Displ[Valor_Dc];
-	PORTB |= (1 << PINB2); // Encender segmento decenas
+	uint8_t Valor_Dc = Valor_ADC/16;
+	uint8_t Valor_Un = Valor_ADC%16;
+	PORTB &= ~(1 << PINB3) | (1 << PINB2);
+	PORTC = Digito_Displ[(Valor_Dc)];
+	PORTB = 0b00000100;
 	_delay_ms(5);
 	
-	// Apagar ambos segmentos
-	PORTB &= ~((1 << PINB3) | (1 << PINB2));
-	
-	// Mostrar unidades
-	PORTC = Digito_Displ[Valor_Un];
-	PORTB |= (1 << PINB3); // Encender segmento unidades
+	PORTB &= ~(1 << PINB3) | (1 << PINB2);
+	PORTC = Digito_Displ[(Valor_Un)];
+	PORTB = 0b00001000;
 	_delay_ms(5);
 }
+
 /****************************************/
 // Interrupt subroutines
 ISR(ADC_vect)
