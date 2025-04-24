@@ -120,17 +120,31 @@
     </ToolchainSettings>
   </PropertyGroup>
   <ItemGroup>
+    <Compile Include="ADC\adc.c">
+      <SubType>compile</SubType>
+    </Compile>
+    <Compile Include="ADC\adc.h">
+      <SubType>compile</SubType>
+    </Compile>
+    <Compile Include="LED_PWM\led_pwm.c">
+      <SubType>compile</SubType>
+    </Compile>
+    <Compile Include="LED_PWM\led_pwm.h">
+      <SubType>compile</SubType>
+    </Compile>
     <Compile Include="main.c">
       <SubType>compile</SubType>
     </Compile>
-    <Compile Include="PWM\PWM.c">
+    <Compile Include="PWM\pwm_servo.c">
       <SubType>compile</SubType>
     </Compile>
-    <Compile Include="PWM\PWM.h">
+    <Compile Include="PWM\pwm_servo.h">
       <SubType>compile</SubType>
     </Compile>
   </ItemGroup>
   <ItemGroup>
+    <Folder Include="ADC" />
+    <Folder Include="LED_PWM" />
     <Folder Include="PWM" />
   </ItemGroup>
   <Import Project="$(AVRSTUDIO_EXE_PATH)\\Vs\\Compiler.targets" />
